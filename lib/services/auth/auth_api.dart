@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../../models/student.dart';
+
 class AuthApi {
   AuthApi(this._dio);
 
@@ -35,6 +37,12 @@ class AuthApi {
       final data = e.response?.data;
       throw Exception('fetchMe failed (status=$status) data=$data');
     }
+  }
+
+
+  Future<Student> fetchMeStudent({String? token}) async {
+    final raw = await fetchMe(token: token);
+    return Student.fromApiResponse(raw);
   }
 
   Future<String> loginWithFirebaseIdToken(String idToken) async {

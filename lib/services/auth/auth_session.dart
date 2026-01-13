@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../models/student.dart';
+
 import 'token_storage.dart';
 import 'auth_api.dart';
 import 'firebase_bootstrap.dart';
@@ -21,19 +23,21 @@ class AuthSession extends ChangeNotifier {
 
   AuthStatus status = AuthStatus.unknown;
   bool isBusy = false;
+  bool isMeLoading = false;
+  String? meError;
 
   String? token;
-  Map<String, dynamic>? me;
+  Student? me;
 
   bool get isAuthed => status == AuthStatus.authenticated;
 
-  Map<String, dynamic> _defaultMockMe() => {
-        'id': 'mock-student',
-        'fullName': 'Mock Student',
-        'email': 'mock@cybersteps.local',
-        'currentLevel': 0,
-        'note': 'Mock auth enabled (no backend calls).',
-      };
+  Student _defaultMockMe() => Student(
+        id: 'mock-student',
+        fullName: 'Mock Student',
+        email: 'mock@cybersteps.local',
+        levelId: 0,
+        totalPoints: 0,
+      );
 
   /// Bootstrap on app start:
   /// - If no token => unauthenticated
@@ -46,6 +50,7 @@ class AuthSession extends ChangeNotifier {
     notifyListeners();
 
     try {
+      meError = null;
       // ensure Firebase is initialized (safe to call multiple times)
       await FirebaseBootstrap.ensureInitialized();
 
@@ -62,7 +67,8 @@ class AuthSession extends ChangeNotifier {
       }
 
       // validate token with /students/me
-      me = await _api.fetchMe(token: token);
+      me = await _api.fetchMeStudent(token: token);
+      meError = null;
       status = AuthStatus.authenticated;
     } catch (_) {
       await _tokenStorage.clearToken();
@@ -80,13 +86,15 @@ class AuthSession extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      meError = null;
       final jwt = await _api.loginWithFirebaseIdToken(idToken);
       await _tokenStorage.saveToken(jwt);
 
       token = jwt;
 
       // IMPORTANT: pass token explicitly to avoid first-call Authorization race
-      me = await _api.fetchMe(token: jwt);
+      me = await _api.fetchMeStudent(token: jwt);
+      meError = null;
       status = AuthStatus.authenticated;
     } finally {
       isBusy = false;
@@ -102,6 +110,7 @@ class AuthSession extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      meError = null;
       await FirebaseBootstrap.ensureInitialized();
 
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -128,6 +137,7 @@ class AuthSession extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      meError = null;
       await FirebaseBootstrap.ensureInitialized();
 
       await FirebaseAuth.instance.verifyPhoneNumber(
@@ -164,6 +174,7 @@ class AuthSession extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      meError = null;
       final credential = PhoneAuthProvider.credential(
         verificationId: _verificationId!,
         smsCode: otp.trim(),
@@ -187,6 +198,7 @@ class AuthSession extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      meError = null;
       final jwt = '$_mockPrefix${DateTime.now().millisecondsSinceEpoch}';
       await _tokenStorage.saveToken(jwt);
       token = jwt;
@@ -194,6 +206,32 @@ class AuthSession extends ChangeNotifier {
       status = AuthStatus.authenticated;
     } finally {
       isBusy = false;
+      notifyListeners();
+    }
+  }
+
+
+  Future<void> refreshMe() async {
+    if (!isAuthed) return;
+    final t = token;
+    if (t == null || t.trim().isEmpty) return;
+
+    isMeLoading = true;
+    meError = null;
+    notifyListeners();
+
+    try {
+      meError = null;
+      if (t.startsWith(_mockPrefix)) {
+        me = _defaultMockMe();
+        return;
+      }
+      me = await _api.fetchMeStudent(token: t);
+      meError = null;
+    } catch (e) {
+      meError = e.toString();
+    } finally {
+      isMeLoading = false;
       notifyListeners();
     }
   }
@@ -206,6 +244,7 @@ class AuthSession extends ChangeNotifier {
 
     // optional: sign out firebase session
     try {
+      meError = null;
       await FirebaseAuth.instance.signOut();
     } catch (_) {}
 
