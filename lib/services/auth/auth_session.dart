@@ -202,7 +202,7 @@ class AuthSession extends ChangeNotifier {
       final jwt = '$_mockPrefix${DateTime.now().millisecondsSinceEpoch}';
       await _tokenStorage.saveToken(jwt);
       token = jwt;
-      me = mockMe ?? _defaultMockMe();
+      me = mockMe != null ? Student.fromApiResponse(mockMe) : _defaultMockMe();
       status = AuthStatus.authenticated;
     } finally {
       isBusy = false;
