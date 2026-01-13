@@ -22,7 +22,7 @@ class CyberStepsApp extends ConsumerWidget {
   GlobalWidgetsLocalizations.delegate,
   GlobalCupertinoLocalizations.delegate,
 ],
-      routerConfig: AppRouter.router,
+      routerConfig: ref.watch(AppRouter.routerProvider),
       builder: (context, child) {
         return Directionality(
           textDirection: TextDirection.rtl,

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "C:/Users/Venom/OneDrive/Desktop/securty_stips/erc"
+		},
+		{
+			"path": "C:/Users/Venom/OneDrive/Desktop/New folder"
+		}
+	],
+	"settings": {
+		"css.lint.unknownAtRules": "ignore",
+		"scss.lint.unknownAtRules": "ignore"
+	}
+}

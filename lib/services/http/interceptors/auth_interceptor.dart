@@ -1,18 +1,28 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// Placeholder for auth header injection.
-/// Later you'll read token from Riverpod (secure storage) and add:
-/// options.headers['Authorization'] = 'Bearer $token';
+import '../../auth/token_storage.dart';
+
+/// Injects Authorization header from flutter_secure_storage.
 class AuthInterceptor extends Interceptor {
-  @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    // TODO: inject token when auth is ready.
-    handler.next(options);
-  }
+  AuthInterceptor();
+
+  static final TokenStorage _tokenStorage =
+      TokenStorage(const FlutterSecureStorage());
 
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) {
-    // TODO: handle 401 global logout if needed.
-    handler.next(err);
+  void onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    try {
+      final token = await _tokenStorage.readToken();
+      if (token != null && token.trim().isNotEmpty) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
+    } catch (_) {
+      // ignore storage errors
+    }
+    handler.next(options);
   }
 }
