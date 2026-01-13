@@ -2,122 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/level.dart';
-import '../../services/http/api_utils.dart';
 import '../../state/providers.dart';
-import '../assessments/daily_exam_screen.dart';
-import '../assessments/exam_attempt_screen.dart';
-import '../assessments/quiz_attempt_screen.dart';
+import '../../services/levels/levels_api.dart';
 
-class LevelDetailScreen extends StatelessWidget {
-  const LevelDetailScreen({
-    super.key,
-    required this.level,
-    required this.currentLevel,
-  });
+class LevelDetailScreen extends ConsumerStatefulWidget {
+  const LevelDetailScreen({super.key, required this.levelId});
 
-  final Level level;
-  final int currentLevel;
+  final int levelId;
 
   @override
-  Widget build(BuildContext context) {
-    final status = computeLevelStatus(level: level, currentLevel: currentLevel);
-
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(level.title, textDirection: TextDirection.rtl),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'المحتوى'),
-              Tab(text: 'الامتحانات'),
-              Tab(text: 'التقدّم'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            _ContentTab(level: level, status: status),
-            _ExamsTab(level: level, status: status, currentLevel: currentLevel),
-            _ProgressTab(level: level, status: status),
-          ],
-        ),
-      ),
-    );
-  }
+  ConsumerState<LevelDetailScreen> createState() => _LevelDetailScreenState();
 }
 
-class _ContentTab extends StatelessWidget {
-  const _ContentTab({required this.level, required this.status});
-  final Level level;
-  final LevelUiStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = _contentFor(level.order);
-
-    if (status == LevelUiStatus.locked) {
-      return _LockedBody(title: 'المحتوى مقفول', subtitle: 'ارجع لصفحة المستويات وشوف سبب القفل.');
-    }
-
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return Card(
-          child: ListTile(
-            leading: const Icon(Icons.menu_book_rounded),
-            title: Text(item, textDirection: TextDirection.rtl),
-            subtitle: Text('قريباً: فتح الدروس من الـ API', textDirection: TextDirection.rtl),
-            trailing: const Icon(Icons.chevron_left_rounded),
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('قريباً: شاشة الدرس')),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  List<String> _contentFor(int order) {
-    // Placeholder sections — next patch will load them from backend.
-    switch (order) {
-      case 0:
-        return const ['Networking Basics', 'Linux Intro', 'Cyber Hygiene', 'Mini Labs'];
-      case 1:
-        return const ['Linux CLI', 'Windows Basics', 'Networking Practice', 'Daily Quizzes'];
-      case 2:
-        return const ['Blue Team Basics', 'Logs & SIEM', 'Incident Response', 'Hands-on'];
-      case 3:
-        return const ['Threat Hunting', 'Hardening', 'Detection Engineering', 'Projects'];
-      case 4:
-        return const ['Choose Track', 'Track Modules', 'Track Labs', 'Mid Assessments'];
-      case 5:
-        return const ['Capstone', 'Final Review', 'Mock Final', 'Final Exam'];
-      default:
-        return const ['Content'];
-    }
-  }
-}
-
-class _ExamsTab extends ConsumerStatefulWidget {
-  const _ExamsTab({required this.level, required this.status, required this.currentLevel});
-  final Level level;
-  final LevelUiStatus status;
-  final int currentLevel;
-
-  @override
-  ConsumerState<_ExamsTab> createState() => _ExamsTabState();
-}
-
-class _ExamsTabState extends ConsumerState<_ExamsTab> {
+class _LevelDetailScreenState extends ConsumerState<LevelDetailScreen> with SingleTickerProviderStateMixin {
   bool _loading = true;
   String? _error;
-  List<Map<String, dynamic>> _quizzes = const [];
+  LevelDetailResponse? _data;
+
+  late final TabController _tabs = TabController(length: 3, vsync: this);
 
   @override
   void initState() {
@@ -125,21 +27,30 @@ class _ExamsTabState extends ConsumerState<_ExamsTab> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    final session = ref.read(authSessionProvider);
+
     setState(() {
       _loading = true;
       _error = null;
     });
+
     try {
-      final api = ref.read(quizApiProvider);
-      final list = await api.listByLevel(widget.level.id);
+      final api = LevelsApi(session.dio);
+      final data = await api.fetchLevelDetail(widget.levelId);
       setState(() {
-        _quizzes = list;
+        _data = data;
         _loading = false;
       });
     } catch (e) {
       setState(() {
-        _error = ApiUtils.humanizeDioError(e);
+        _error = 'فشل تحميل تفاصيل المستوى.';
         _loading = false;
       });
     }
@@ -147,213 +58,363 @@ class _ExamsTabState extends ConsumerState<_ExamsTab> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.status == LevelUiStatus.locked) {
-      return _LockedBody(title: 'الامتحانات مقفولة', subtitle: 'هذا المستوى لسه ما انفتح.');
-    }
+    final d = _data;
 
-    final isCurrent = widget.level.id == widget.currentLevel;
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (!isCurrent)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline_rounded),
-              title: const Text('ملاحظة', textDirection: TextDirection.rtl),
-              subtitle: const Text(
-                'الامتحان النهائي واختبار اليوم متاحين فقط لمستواك الحالي. تقدر تشوف الكويزات.',
-                textDirection: TextDirection.rtl,
-              ),
-            ),
-          ),
-
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.quiz_rounded),
-            title: const Text('اختبار اليوم', textDirection: TextDirection.rtl),
-            subtitle: Text(
-              isCurrent ? '5 أسئلة – تسليم واحد' : 'مقفول (ليس مستواك الحالي)',
-              textDirection: TextDirection.rtl,
-            ),
-            enabled: isCurrent,
-            onTap: isCurrent
-                ? () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const DailyExamScreen()),
-                    )
-                : () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('اختبار اليوم متاح فقط لمستواك الحالي.')),
-                    );
-                  },
-          ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          d?.level.title ?? 'المستوى',
+          textDirection: TextDirection.rtl,
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.workspace_premium_rounded),
-            title: const Text('الامتحان النهائي', textDirection: TextDirection.rtl),
-            subtitle: Text(
-              isCurrent ? 'ابدأ المحاولة ثم سلّم الإجابات' : 'مقفول (ليس مستواك الحالي)',
-              textDirection: TextDirection.rtl,
-            ),
-            enabled: isCurrent,
-            onTap: isCurrent
-                ? () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ExamAttemptScreen(levelTitle: widget.level.title, levelId: widget.level.id),
-                      ),
-                    )
-                : () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('الامتحان النهائي متاح فقط لمستواك الحالي.')),
-                    );
-                  },
+        actions: [
+          IconButton(
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'تحديث',
           ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'الكويزات',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-                textDirection: TextDirection.rtl,
-              ),
-            ),
-            IconButton(
-              onPressed: _loading ? null : _load,
-              icon: const Icon(Icons.refresh_rounded),
-              tooltip: 'Refresh',
-            ),
+        ],
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(text: 'المحتوى'),
+            Tab(text: 'الامتحانات'),
+            Tab(text: 'التقدّم'),
           ],
         ),
-        const SizedBox(height: 8),
-        if (_loading)
-          const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
-        else if (_error != null)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.error_outline_rounded),
-              title: const Text('تعذّر تحميل الكويزات', textDirection: TextDirection.rtl),
-              subtitle: Text(_error!, textDirection: TextDirection.rtl),
-              trailing: const Icon(Icons.refresh_rounded),
-              onTap: _load,
-            ),
-          )
-        else if (_quizzes.isEmpty)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.inbox_rounded),
-              title: const Text('لا يوجد كويزات حالياً', textDirection: TextDirection.rtl),
-              subtitle: const Text('رح تظهر هون أول ما تنضاف على السيرفر.', textDirection: TextDirection.rtl),
-            ),
-          )
-        else
-          ..._quizzes.map((q) {
-            final id = (q['id'] as num?)?.toInt() ?? 0;
-            final title = (q['title'] ?? 'Quiz').toString();
-            final desc = (q['description'] ?? '').toString();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.list_alt_rounded),
-                  title: Text(title, textDirection: TextDirection.rtl),
-                  subtitle: desc.trim().isEmpty
-                      ? const Text('اضغط لبدء الكويز', textDirection: TextDirection.rtl)
-                      : Text(desc, textDirection: TextDirection.rtl, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  onTap: id <= 0
-                      ? null
-                      : () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => QuizAttemptScreen(quizId: id, quizTitle: title)),
-                          ),
-                ),
-              ),
-            );
-          }),
-      ],
+      ),
+      body: SafeArea(
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? _ErrorState(message: _error!, onRetry: _load)
+                : d == null
+                    ? _ErrorState(message: 'لا توجد بيانات', onRetry: _load)
+                    : TabBarView(
+                        controller: _tabs,
+                        children: [
+                          _ContentTab(level: d.level, tpl: d.studyPlanTemplate),
+                          _ExamsTab(level: d.level, exams: d.exams, quizzes: d.quizzes),
+                          _ProgressTab(level: d.level),
+                        ],
+                      ),
+      ),
     );
   }
 }
 
-class _ProgressTab extends StatelessWidget {
-  const _ProgressTab({required this.level, required this.status});
+class _ContentTab extends StatelessWidget {
+  const _ContentTab({required this.level, required this.tpl});
+
   final Level level;
-  final LevelUiStatus status;
+  final Map<String, dynamic>? tpl;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final status = level.status ?? 'LOCKED';
+    final locked = status == 'LOCKED';
 
-    if (status == LevelUiStatus.locked) {
-      return _LockedBody(title: 'التقدّم غير متاح', subtitle: 'هذا المستوى مقفول حالياً.');
+    if (locked) {
+      return _LockedPanel(title: level.title, reason: level.lockedReason ?? 'المستوى مقفول.');
     }
 
+    if (tpl == null) {
+      return const _InfoPanel(
+        title: 'لا يوجد محتوى جاهز بعد',
+        body: 'رح نربط المحتوى التفصيلي في باتش قادم، لكن القفل/الفتح والـ UI جاهزين.',
+      );
+    }
+
+    final weeks = (tpl!['weeks'] is List) ? (tpl!['weeks'] as List) : const [];
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       children: [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'ملخّص التقدّم',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-                  textDirection: TextDirection.rtl,
-                ),
-                const SizedBox(height: 10),
-                LinearProgressIndicator(
-                  value: status == LevelUiStatus.completed ? 1.0 : 0.35,
-                  minHeight: 10,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                const SizedBox(height: 10),
                 Text(
-                  status == LevelUiStatus.completed ? 'مكتمل 100%' : 'قريباً: تقدّم حقيقي من الـ API',
-                  style: TextStyle(color: cs.onSurface.withOpacity(0.7)),
+                  (tpl!['title'] ?? 'خطة الدراسة').toString(),
+                  textDirection: TextDirection.rtl,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'نسخة: ${(tpl!['version'] ?? '').toString()}',
                   textDirection: TextDirection.rtl,
                 ),
               ],
             ),
           ),
         ),
+        const SizedBox(height: 12),
+        ...weeks.map((w) => _WeekTile(week: Map<String, dynamic>.from(w as Map))).toList(),
+        const SizedBox(height: 12),
       ],
     );
   }
 }
 
-class _LockedBody extends StatelessWidget {
-  const _LockedBody({required this.title, required this.subtitle});
-  final String title;
-  final String subtitle;
+class _WeekTile extends StatelessWidget {
+  const _WeekTile({required this.week});
+  final Map<String, dynamic> week;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final days = (week['days'] is List) ? (week['days'] as List) : const [];
+    final weekNum = (week['weekNumber'] ?? '').toString();
+    final title = (week['title'] ?? 'الأسبوع $weekNum').toString();
 
+    return Card(
+      child: ExpansionTile(
+        title: Text(title, textDirection: TextDirection.rtl),
+        subtitle: Text('أيام: ${days.length}', textDirection: TextDirection.rtl),
+        children: days
+            .map((d) => _DayTile(day: Map<String, dynamic>.from(d as Map)))
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _DayTile extends StatelessWidget {
+  const _DayTile({required this.day});
+  final Map<String, dynamic> day;
+
+  @override
+  Widget build(BuildContext context) {
+    final dayNum = (day['dayNumber'] ?? '').toString();
+    final title = (day['title'] ?? 'اليوم $dayNum').toString();
+    final desc = (day['description'] ?? '').toString();
+
+    final tasks = (day['tasksJson'] is List) ? (day['tasksJson'] as List) : const [];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, textDirection: TextDirection.rtl, style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (desc.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(desc, textDirection: TextDirection.rtl),
+              ],
+              const SizedBox(height: 10),
+              if (tasks.isEmpty)
+                const Text('لا يوجد مهام لهذا اليوم.', textDirection: TextDirection.rtl)
+              else
+                ...tasks.map((t) => _TaskRow(task: Map<String, dynamic>.from(t as Map))).toList(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskRow extends StatelessWidget {
+  const _TaskRow({required this.task});
+  final Map<String, dynamic> task;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (task['title'] ?? 'Task').toString();
+    final type = (task['type'] ?? '').toString();
+    final minutes = task['minutes'];
+    final points = task['points'];
+
+    String meta = '';
+    if (type.isNotEmpty) meta += type;
+    if (minutes != null) meta += (meta.isEmpty ? '' : ' • ') + '${minutes.toString()} دقيقة';
+    if (points != null) meta += (meta.isEmpty ? '' : ' • ') + '${points.toString()} نقطة';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(title, textDirection: TextDirection.rtl),
+                if (meta.isNotEmpty)
+                  Text(meta, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const Icon(Icons.check_box_outline_blank),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExamsTab extends StatelessWidget {
+  const _ExamsTab({
+    required this.level,
+    required this.exams,
+    required this.quizzes,
+  });
+
+  final Level level;
+  final List<Map<String, dynamic>> exams;
+  final List<Map<String, dynamic>> quizzes;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = level.status ?? 'LOCKED';
+    final locked = status == 'LOCKED';
+
+    if (locked) {
+      return _LockedPanel(title: level.title, reason: level.lockedReason ?? 'المستوى مقفول.');
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        Card(
+          child: ListTile(
+            title: const Text('امتحانات', textDirection: TextDirection.rtl),
+            trailing: Text('${exams.length}'),
+          ),
+        ),
+        ...exams.map((e) => _ExamTile(item: e, icon: Icons.assignment)).toList(),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            title: const Text('كويزات', textDirection: TextDirection.rtl),
+            trailing: Text('${quizzes.length}'),
+          ),
+        ),
+        ...quizzes.map((q) => _ExamTile(item: q, icon: Icons.quiz)).toList(),
+        const SizedBox(height: 12),
+        const _InfoPanel(
+          title: 'ملاحظة',
+          body: 'تشغيل الامتحان/الكويز فعلياً وربطه بواجهة الحل رح يكون في باتش الامتحانات.',
+        ),
+      ],
+    );
+  }
+}
+
+class _ExamTile extends StatelessWidget {
+  const _ExamTile({required this.item, required this.icon});
+  final Map<String, dynamic> item;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (item['title'] ?? 'عنصر').toString();
+    final passing = item['passingScore'];
+    return Card(
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(title, textDirection: TextDirection.rtl),
+        subtitle: passing != null ? Text('النجاح: ${passing.toString()}%', textDirection: TextDirection.rtl) : null,
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('قريباً')),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProgressTab extends StatelessWidget {
+  const _ProgressTab({required this.level});
+  final Level level;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = level.status ?? 'LOCKED';
+    final locked = status == 'LOCKED';
+
+    if (locked) {
+      return _LockedPanel(title: level.title, reason: level.lockedReason ?? 'المستوى مقفول.');
+    }
+
+    return const _InfoPanel(
+      title: 'التقدّم',
+      body: 'رح نربط التقدّم الحقيقي (محاولات الامتحانات/الكويزات والنقاط) في باتش لاحق.',
+    );
+  }
+}
+
+class _LockedPanel extends StatelessWidget {
+  const _LockedPanel({required this.title, required this.reason});
+
+  final String title;
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.lock_outline_rounded, size: 46, color: cs.error.withOpacity(0.9)),
+            const Icon(Icons.lock, size: 42),
             const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              textDirection: TextDirection.rtl,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              subtitle,
-              style: TextStyle(color: cs.onSurface.withOpacity(0.7)),
-              textDirection: TextDirection.rtl,
-              textAlign: TextAlign.center,
+            Text(title, textDirection: TextDirection.rtl, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text(reason, textDirection: TextDirection.rtl, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoPanel extends StatelessWidget {
+  const _InfoPanel({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, textDirection: TextDirection.rtl, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text(body, textDirection: TextDirection.rtl, textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(message, textDirection: TextDirection.rtl, textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة', textDirection: TextDirection.rtl),
             ),
           ],
         ),

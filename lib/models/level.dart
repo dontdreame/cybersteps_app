@@ -26,6 +26,17 @@ class Level {
   /// Optional backend-driven reason string (Arabic preferred).
   final String? lockedReason;
 
+  /// Returns backend-driven status when present, otherwise computes it.
+  /// `currentLevel` here is treated as the student's CURRENT LEVEL ORDER (not id).
+  String effectiveStatus({required int currentLevel}) {
+    final s = status;
+    if (s != null && s.trim().isNotEmpty) return s;
+    if (order < currentLevel) return 'COMPLETED';
+    if (order == currentLevel) return 'AVAILABLE';
+    return 'LOCKED';
+  }
+
+
   bool get hasBackendStatus => status != null && status!.trim().isNotEmpty;
 
   /// Flexible parser: accepts a raw map, or wrapper shapes like:
