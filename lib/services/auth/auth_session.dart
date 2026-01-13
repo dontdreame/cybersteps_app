@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../models/student.dart';
@@ -20,6 +21,9 @@ class AuthSession extends ChangeNotifier {
 
   final TokenStorage _tokenStorage;
   final AuthApi _api;
+
+
+  Dio get dio => _api.dio;
 
   AuthStatus status = AuthStatus.unknown;
   bool isBusy = false;
@@ -202,7 +206,7 @@ class AuthSession extends ChangeNotifier {
       final jwt = '$_mockPrefix${DateTime.now().millisecondsSinceEpoch}';
       await _tokenStorage.saveToken(jwt);
       token = jwt;
-      me = mockMe != null ? Student.fromApiResponse(mockMe) : _defaultMockMe();
+      me = mockMe ?? _defaultMockMe();
       status = AuthStatus.authenticated;
     } finally {
       isBusy = false;

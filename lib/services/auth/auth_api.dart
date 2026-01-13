@@ -7,6 +7,8 @@ class AuthApi {
 
   final Dio _dio;
 
+  Dio get dio => _dio;
+
   /// Builds an endpoint path that works whether your Dio baseUrl is:
   /// - https://<host>          (NO /api)
   /// - https://<host>/api      (HAS /api)

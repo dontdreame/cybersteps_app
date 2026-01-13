@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/providers.dart';
 import '../../ui/components/cs_button.dart';
+import '../levels/levels_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -72,8 +73,8 @@ class HomeScreen extends ConsumerWidget {
                   label: 'المستويات',
                   icon: Icons.layers_rounded,
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('قريباً: صفحة المستويات')),
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const LevelsScreen()),
                     );
                   },
                 ),
