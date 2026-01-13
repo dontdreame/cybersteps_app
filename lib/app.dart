@@ -17,11 +17,11 @@ class CyberStepsApp extends ConsumerWidget {
       theme: AppTheme.light(),
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      localizationsDelegates: [
+  GlobalMaterialLocalizations.delegate,
+  GlobalWidgetsLocalizations.delegate,
+  GlobalCupertinoLocalizations.delegate,
+],
       routerConfig: AppRouter.router,
       builder: (context, child) {
         return Directionality(
