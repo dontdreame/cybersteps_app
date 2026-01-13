@@ -6,7 +6,7 @@ import 'dart:convert';
 /// - We support backend-driven status when present (status/lockedReason).
 /// - Otherwise, we compute status on the client using student's currentLevel.
 class Level {
-  Level({
+  const Level({
     required this.id,
     required this.order,
     required this.title,
